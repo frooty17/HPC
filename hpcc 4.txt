@@ -1,0 +1,166 @@
+!nvcc --version
+
+!pip install git+https://github.com/andreinechaev/nvcc4jupyter.git
+
+%load_ext nvcc4jupyter
+
+%%cuda
+#include <stdio.h>
+#include <stdlib.h>
+#include <cuda_runtime.h>
+
+#define N 1000000 // Size of vectors
+
+// CUDA kernel for vector addition
+__global__ void vectorAdd(int *a, int *b, int *c, int n) {
+    int i = blockDim.x * blockIdx.x + threadIdx.x;
+    if (i < n) {
+        c[i] = a[i] + b[i];
+    }
+}
+int main() {
+    // Host vectors and initialization
+    int *h_a = (int *)malloc(N * sizeof(int)); // Allocate memory for host vector a
+    int *h_b = (int *)malloc(N * sizeof(int)); // Allocate memory for host vector b
+    int *h_c = (int *)malloc(N * sizeof(int)); // Allocate memory for host vector c
+    // Initialize host vectors a and b
+    for (int i = 0; i < N; ++i) {
+        h_a[i] = i;
+        h_b[i] = i * 2;
+    }
+
+    // Device vectors
+    int *d_a, *d_b, *d_c;
+    cudaMalloc((void **)&d_a, N * sizeof(int)); // Allocate memory for device vector a
+    cudaMalloc((void **)&d_b, N * sizeof(int)); // Allocate memory for device vector b
+    cudaMalloc((void **)&d_c, N * sizeof(int)); // Allocate memory for device vector c
+
+    // Copy host vectors to device
+    cudaMemcpy(d_a, h_a, N * sizeof(int), cudaMemcpyHostToDevice); // Copy host vector a to device
+    cudaMemcpy(d_b, h_b, N * sizeof(int), cudaMemcpyHostToDevice); // Copy host vector b to device
+
+    // Launch vectorAdd kernel on GPU
+    vectorAdd<<<ceil(N / 256.0), 256>>>(d_a, d_b, d_c, N); // Run kernel with appropriate grid and block dimensions
+
+    // Copy result from device to host
+    cudaMemcpy(h_c, d_c, N * sizeof(int), cudaMemcpyDeviceToHost); // Copy device vector c to host
+
+    // Verify the result
+    for (int i = 0; i < 10; ++i) { // Print the first 10 elements of vectors a, b, and c
+        printf("%d + %d = %d\n", h_a[i], h_b[i], h_c[i]);
+    }
+
+    // Free memory
+    free(h_a); // Free memory allocated for host vector a
+    free(h_b); // Free memory allocated for host vector b
+    free(h_c); // Free memory allocated for host vector c
+    cudaFree(d_a); // Free memory allocated for device vector a
+    cudaFree(d_b); // Free memory allocated for device vector b
+    cudaFree(d_c); // Free memory allocated for device vector c
+
+     return 0;
+}
+
+
+
+%%cuda
+#include <stdio.h>
+#include <stdlib.h>
+#include <cuda_runtime.h>
+
+#define N 32 // Matrix size
+
+// CUDA kernel for matrix multiplication
+__global__ void matrixMul(int *a, int *b, int *c, int n) {
+    int row = blockIdx.y * blockDim.y + threadIdx.y;
+    int col = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (row < n && col < n) {
+        int sum = 0;
+        // Compute dot product of row of matrix A and column of matrix B
+        for (int i = 0; i < n; ++i) {
+            sum += a[row * n + i] * b[i * n + col];
+        }
+        // Store result in the corresponding cell of matrix C
+        c[row * n + col] = sum;
+    }
+}
+
+int main() {
+    // Matrix dimensions
+    int size = N * N * sizeof(int);
+
+    // Host matrices
+    int *h_a, *h_b, *h_c;
+
+    // Device matrices
+    int *d_a, *d_b, *d_c;
+
+    // Allocate memory for host matrices
+    h_a = (int *)malloc(size);
+    h_b = (int *)malloc(size);
+    h_c = (int *)malloc(size);
+
+    // Initialize host matrices
+    for (int i = 0; i < N * N; ++i) {
+        h_a[i] = i;
+        h_b[i] = i * 2;
+    }
+
+    // Allocate memory for device matrices
+    cudaMalloc((void **)&d_a, size);
+    cudaMalloc((void **)&d_b, size);
+    cudaMalloc((void **)&d_c, size);
+
+    // Copy host matrices to device
+    cudaMemcpy(d_a, h_a, size, cudaMemcpyHostToDevice);
+    cudaMemcpy(d_b, h_b, size, cudaMemcpyHostToDevice);
+
+    // Define grid and block size
+    dim3 dimGrid(ceil(N / 16.0), ceil(N / 16.0), 1);
+    dim3 dimBlock(16, 16, 1);
+
+    // Print input matrices
+    printf("Matrix A (Input):\n");
+    for (int i = 0; i < 4; ++i) {
+        for (int j = 0; j < 4; ++j) {
+            printf("%d ", h_a[i * N + j]);
+        }
+        printf("\n");
+    }
+
+    printf("\nMatrix B (Input):\n");
+    for (int i = 0; i < 4; ++i) {
+        for (int j = 0; j < 4; ++j) {
+            printf("%d ", h_b[i * N + j]);
+        }
+        printf("\n");
+    }
+
+    // Launch matrixMul kernel on GPU
+    matrixMul<<<dimGrid, dimBlock>>>(d_a, d_b, d_c, N);
+
+    // Copy result from device to host
+    cudaMemcpy(h_c, d_c, size, cudaMemcpyDeviceToHost);
+
+    // Print result matrix
+    printf("\nResult Matrix (Output):\n");
+    for (int i = 0; i < 4; ++i) {
+        for (int j = 0; j < 4; ++j) {
+            printf("%d ", h_c[i * N + j]);
+        }
+        printf("\n");
+    }
+
+    // Free device memory
+    cudaFree(d_a);
+    cudaFree(d_b);
+    cudaFree(d_c);
+
+    // Free host memory
+    free(h_a);
+    free(h_b);
+    free(h_c);
+
+    return 0;
+}
